@@ -10,6 +10,8 @@ export interface RelayEnvelope {
   ts: number;
   encrypted: boolean;
   payload: string;
+  /** Optional unique message ID for deduplication. */
+  msgId?: string;
 }
 
 /**
@@ -35,6 +37,7 @@ export function parseEnvelope(data: string): RelayEnvelope | null {
       ts: obj.ts,
       encrypted: obj.encrypted === true,
       payload: obj.payload,
+      msgId: typeof obj.msgId === 'string' ? obj.msgId : undefined,
     };
   } catch {
     return null;

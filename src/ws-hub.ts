@@ -18,6 +18,9 @@ export interface WsConnection {
   send: (data: string) => void;
 }
 
+/** Max dedup entries per device before pruning oldest. */
+const DEDUP_MAX_PER_DEVICE = 200;
+
 export class WsHub {
   readonly rooms: RoomManager;
   readonly buffer: MessageBuffer;
@@ -26,6 +29,8 @@ export class WsHub {
 
   private connections: Map<string, WsConnection> = new Map(); // connId → connection
   private deviceToConn: Map<string, string> = new Map(); // deviceId → connId
+  /** Deduplication: deviceId → Set of recently seen msgIds. */
+  private seenMsgIds: Map<string, Set<string>> = new Map();
 
   constructor(rooms: RoomManager, buffer: MessageBuffer, auth: RelayAuth, rateLimiter: RateLimiter) {
     this.rooms = rooms;
@@ -63,6 +68,8 @@ export class WsHub {
     this.rooms.leaveRoom(conn.roomId, conn.deviceId);
     this.deviceToConn.delete(conn.deviceId);
     this.connections.delete(connId);
+    // Keep seenMsgIds for a bit (device may reconnect and re-send)
+    // They'll be pruned naturally by the size cap
   }
 
   /** Handle an incoming message from a connection. */
@@ -84,6 +91,25 @@ export class WsHub {
     // Verify room matches
     if (envelope.room !== conn.roomId) {
       return { success: false, error: 'Room mismatch' };
+    }
+
+    // Deduplication: skip if we've already seen this msgId from this device
+    if (envelope.msgId) {
+      let seen = this.seenMsgIds.get(conn.deviceId);
+      if (!seen) {
+        seen = new Set<string>();
+        this.seenMsgIds.set(conn.deviceId, seen);
+      }
+      if (seen.has(envelope.msgId)) {
+        return { success: true }; // silently deduplicate
+      }
+      seen.add(envelope.msgId);
+      // Prune if too large
+      if (seen.size > DEDUP_MAX_PER_DEVICE) {
+        const iter = seen.values();
+        const first = iter.next();
+        if (!first.done) seen.delete(first.value);
+      }
     }
 
     // Route

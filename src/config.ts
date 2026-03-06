@@ -18,7 +18,7 @@ const DEFAULTS: RelayConfig = {
   sqlitePath: './relay.db',
   maxRooms: 1000,
   maxClientsPerRoom: 10,
-  bufferTtlSeconds: 60,
+  bufferTtlSeconds: 300,
 };
 
 /**
