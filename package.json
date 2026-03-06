@@ -1,0 +1,16 @@
+{
+  "name": "@honeide/relay",
+  "version": "0.1.0",
+  "description": "Hone Sync Relay Server — WebSocket hub for cross-device sync",
+  "main": "src/app.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bun run tsc --noEmit",
+    "start": "bun run src/app.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT"
+}

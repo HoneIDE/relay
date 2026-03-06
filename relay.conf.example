@@ -1,0 +1,9 @@
+# Hone Relay Server Configuration
+# Override with environment variables: HONE_RELAY_HOST, HONE_RELAY_PORT, etc.
+
+host=0.0.0.0
+port=8443
+sqlite.path=./relay.db
+max.rooms=1000
+max.clients.per.room=10
+buffer.ttl.seconds=60
