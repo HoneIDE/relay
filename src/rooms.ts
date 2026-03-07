@@ -44,7 +44,8 @@ export class RoomManager {
       this.rooms.set(roomId, room);
     }
 
-    if (room.connections.size >= this.maxClientsPerRoom) {
+    const conns: Map<string, RoomConnection> = room.connections;
+    if (conns.size >= this.maxClientsPerRoom) {
       return { success: false, error: 'Room full' };
     }
 
@@ -56,10 +57,10 @@ export class RoomManager {
       room.hostDeviceId = deviceId;
     }
 
-    room.connections.set(deviceId, {
-      deviceId,
-      deviceName,
-      isHost,
+    conns.set(deviceId, {
+      deviceId: deviceId,
+      deviceName: deviceName,
+      isHost: isHost,
       connectedAt: Date.now(),
     });
 
@@ -71,14 +72,15 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
-    room.connections.delete(deviceId);
+    const conns: Map<string, RoomConnection> = room.connections;
+    conns.delete(deviceId);
 
     if (room.hostDeviceId === deviceId) {
       room.hostDeviceId = '';
     }
 
     // Destroy room if empty
-    if (room.connections.size === 0) {
+    if (conns.size === 0) {
       this.rooms.delete(roomId);
     }
   }
@@ -95,7 +97,8 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) return [];
     const result: string[] = [];
-    room.connections.forEach((conn) => {
+    const conns: Map<string, RoomConnection> = room.connections;
+    conns.forEach((conn) => {
       if (conn.deviceId !== excludeDeviceId) {
         result.push(conn.deviceId);
       }
@@ -107,7 +110,8 @@ export class RoomManager {
   isInRoom(roomId: string, deviceId: string): boolean {
     const room = this.rooms.get(roomId);
     if (!room) return false;
-    return room.connections.has(deviceId);
+    const conns: Map<string, RoomConnection> = room.connections;
+    return conns.has(deviceId);
   }
 
   /** Get room stats. */
@@ -118,7 +122,9 @@ export class RoomManager {
   /** Get connection count for a room. */
   getConnectionCount(roomId: string): number {
     const room = this.rooms.get(roomId);
-    return room ? room.connections.size : 0;
+    if (!room) return 0;
+    const conns: Map<string, RoomConnection> = room.connections;
+    return conns.size;
   }
 
   /** Get all room IDs. */
