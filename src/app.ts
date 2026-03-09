@@ -222,8 +222,8 @@ wss.on('message', onWsMessage);
 
 function onWsMessage(ws: any, data: any): void {
   const wsId = Number(ws);
-  const joined = wsJoined.get(wsId);
-  if (joined === undefined) return;
+  if (!wsJoined.has(wsId)) return;
+  const joined = wsJoined.get(wsId) as number;
 
   const msg = String(data);
 
@@ -324,13 +324,15 @@ function onWsMessage(ws: any, data: any): void {
   }
 
   // ===================== ROUTING PATH (inline) =====================
-  const slot = wsIdToSlot.get(wsId);
-  if (slot === undefined) return;
+  console.log('ROUTE: wsId=' + String(wsId) + ' msgLen=' + String(msg.length));
+  if (!wsIdToSlot.has(wsId)) { console.log('ROUTE FAIL: no slot for wsId'); return; }
+  const slot = wsIdToSlot.get(wsId) as number;
   const slotAct = slotActiveMap.get(slot) || 0;
-  if (slotAct !== 1) return;
+  if (slotAct !== 1) { console.log('ROUTE FAIL: slot not active'); return; }
 
   const senderRoomId = slotRoomIdMap.get(slot) || '';
   const roomHash = djb2Hash(senderRoomId);
+  console.log('ROUTE: slot=' + String(slot) + ' room=' + senderRoomId + ' hash=' + String(roomHash));
 
   // Extract "from":"..."
   const fromKeyIdx = msg.indexOf('"from"');
@@ -368,16 +370,19 @@ function onWsMessage(ws: any, data: any): void {
   const roomQE2 = msg.indexOf('"', roomQS2 + 1);
   const eRoom = msg.slice(roomQS2 + 1, roomQE2);
 
+  console.log('ROUTE: from=' + eFrom + ' to=' + eTo + ' room=' + eRoom);
+
   // Validate required fields
-  if (eFrom.length === 0) return;
-  if (eTo.length === 0) return;
-  if (eRoom.length === 0) return;
-  if (eFrom.length > 128) return;
-  if (eTo.length > 128) return;
+  if (eFrom.length === 0) { console.log('ROUTE FAIL: empty from'); return; }
+  if (eTo.length === 0) { console.log('ROUTE FAIL: empty to'); return; }
+  if (eRoom.length === 0) { console.log('ROUTE FAIL: empty room'); return; }
+  if (eFrom.length > 128) { console.log('ROUTE FAIL: from too long'); return; }
+  if (eTo.length > 128) { console.log('ROUTE FAIL: to too long'); return; }
 
   // Verify sender device matches (use inline charCodeAt comparison)
   const senderDeviceId = slotDeviceIdMap.get(slot) || '';
-  if (eFrom.length !== senderDeviceId.length) return;
+  console.log('ROUTE: senderDeviceId=' + senderDeviceId + ' eFrom=' + eFrom);
+  if (eFrom.length !== senderDeviceId.length) { console.log('ROUTE FAIL: from length mismatch ' + String(eFrom.length) + ' vs ' + String(senderDeviceId.length)); return; }
   let fromMatch = 1;
   for (let i = 0; i < eFrom.length; i++) {
     if (eFrom.charCodeAt(i) !== senderDeviceId.charCodeAt(i)) {
@@ -385,10 +390,10 @@ function onWsMessage(ws: any, data: any): void {
       break;
     }
   }
-  if (fromMatch !== 1) return;
+  if (fromMatch !== 1) { console.log('ROUTE FAIL: from mismatch'); return; }
 
   // Verify room matches
-  if (eRoom.length !== senderRoomId.length) return;
+  if (eRoom.length !== senderRoomId.length) { console.log('ROUTE FAIL: room length mismatch'); return; }
   let roomMatch = 1;
   for (let i = 0; i < eRoom.length; i++) {
     if (eRoom.charCodeAt(i) !== senderRoomId.charCodeAt(i)) {
@@ -438,8 +443,10 @@ function onWsMessage(ws: any, data: any): void {
   }
 
   if (isHostTarget === 1) {
+    console.log('Route: host roomHash=' + String(roomHash));
     sendToRoomHost(roomHash, msg);
   } else if (isBroadcast === 1) {
+    console.log('Route: broadcast roomHash=' + String(roomHash) + ' sender=' + String(wsId) + ' members=' + String(memberCount));
     broadcastToRoom(roomHash, wsId, msg);
   } else {
     // Direct device target — find the target wsId by scanning members
