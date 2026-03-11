@@ -10,6 +10,7 @@ export interface RelayConfig {
   maxRooms: number;
   maxClientsPerRoom: number;
   bufferTtlSeconds: number;
+  authSecret: string;
 }
 
 const DEFAULTS: RelayConfig = {
@@ -19,6 +20,7 @@ const DEFAULTS: RelayConfig = {
   maxRooms: 1000,
   maxClientsPerRoom: 10,
   bufferTtlSeconds: 300,
+  authSecret: '',
 };
 
 /**
@@ -53,6 +55,7 @@ export function buildConfig(fileValues?: Record<string, string>, env?: Record<st
     maxRooms: parseInt(e['HONE_RELAY_MAX_ROOMS'] ?? fv['max.rooms'] ?? String(DEFAULTS.maxRooms), 10),
     maxClientsPerRoom: parseInt(e['HONE_RELAY_MAX_CLIENTS_PER_ROOM'] ?? fv['max.clients.per.room'] ?? String(DEFAULTS.maxClientsPerRoom), 10),
     bufferTtlSeconds: parseInt(e['HONE_RELAY_BUFFER_TTL'] ?? fv['buffer.ttl.seconds'] ?? String(DEFAULTS.bufferTtlSeconds), 10),
+    authSecret: e['HONE_AUTH_SECRET'] ?? fv['auth.secret'] ?? DEFAULTS.authSecret,
   };
 }
 

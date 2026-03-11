@@ -23,6 +23,7 @@ import { MessageBuffer } from './buffer';
 import { RelayAuth } from './auth';
 import { RateLimiter } from './rate-limit';
 import { WsHub, type WsConnection } from './ws-hub';
+import { initDeltaStore, storeDelta, getDeltasAfter, updateCursor, getCursor, getRoomMaxSeq, getRoomBytes, purgeOldDeltas } from './delta-store';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -37,6 +38,9 @@ try {
 }
 
 const config = buildConfig(fileValues, process.env as Record<string, string>);
+
+// Initialize persistent delta store
+initDeltaStore(config.sqlitePath);
 
 // ---------------------------------------------------------------------------
 // WsHub kept for tests / health
@@ -99,6 +103,50 @@ function strEqN(a: string, b: string): number {
     if (a.charCodeAt(i) !== b.charCodeAt(i)) return 0;
   }
   return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Token validation — same algorithm as hone-auth (local, no HTTP call needed)
+// Token format: userId:deviceId:timestamp.hash
+// ---------------------------------------------------------------------------
+
+function computeTokenHash(payload: string): number {
+  let input1 = config.authSecret;
+  input1 += '|';
+  input1 += payload;
+  const h1 = djb2Hash(input1);
+  let input2 = String(h1);
+  input2 += '|';
+  input2 += config.authSecret;
+  input2 += '|';
+  input2 += payload;
+  return djb2Hash(input2);
+}
+
+function validateToken(token: string): number {
+  if (token.length < 3) return 0;
+  // Find last dot
+  let lastDot = -1;
+  for (let i = token.length - 1; i >= 0; i--) {
+    if (token.charCodeAt(i) === 46) { lastDot = i; break; }
+  }
+  if (lastDot < 1) return 0;
+
+  const payload = token.slice(0, lastDot);
+  const hashStr = token.slice(lastDot + 1);
+  const givenHash = Number(hashStr);
+  const expectedHash = computeTokenHash(payload);
+  if (givenHash !== expectedHash) return 0;
+
+  // Extract userId (before first colon)
+  let firstColon = -1;
+  for (let i = 0; i < payload.length; i++) {
+    if (payload.charCodeAt(i) === 58) { firstColon = i; break; }
+  }
+  if (firstColon < 1) return 0;
+  const userId = Number(payload.slice(0, firstColon));
+  if (userId < 1) return 0;
+  return userId;
 }
 
 function allocSlot(theWsId: number, deviceId: string, roomId: string): void {
@@ -192,6 +240,8 @@ function cleanupPeriodic(): void {
   buffer.purge();
   auth.cleanExpired();
   rateLimiter.cleanup();
+  // Purge deltas older than 30 days, rooms inactive for 90 days
+  purgeOldDeltas(30 * 24 * 60 * 60 * 1000, 90 * 24 * 60 * 60 * 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +321,56 @@ function onWsMessage(ws: any, data: any): void {
       return;
     }
 
+    // Extract token: find "token":"..."
+    let theToken = '';
+    const tokKeyIdx = msg.indexOf('"token"');
+    if (tokKeyIdx >= 0) {
+      const tokColonIdx = msg.indexOf(':', tokKeyIdx + 7);
+      const tokQS = msg.indexOf('"', tokColonIdx + 1);
+      const tokQE = msg.indexOf('"', tokQS + 1);
+      theToken = msg.slice(tokQS + 1, tokQE);
+    }
+
+    // Extract lastSeq (optional, defaults to 0)
+    let lastSeq = 0;
+    const lsKeyIdx = msg.indexOf('"lastSeq"');
+    if (lsKeyIdx >= 0) {
+      const lsColonIdx = msg.indexOf(':', lsKeyIdx + 9);
+      // Find start of number (skip whitespace)
+      let lsNumStart = lsColonIdx + 1;
+      while (lsNumStart < msg.length && msg.charCodeAt(lsNumStart) === 32) {
+        lsNumStart = lsNumStart + 1;
+      }
+      // Find end of number
+      let lsNumEnd = lsNumStart;
+      while (lsNumEnd < msg.length) {
+        const ch = msg.charCodeAt(lsNumEnd);
+        if (ch < 48 || ch > 57) break;
+        lsNumEnd = lsNumEnd + 1;
+      }
+      if (lsNumEnd > lsNumStart) {
+        lastSeq = Number(msg.slice(lsNumStart, lsNumEnd));
+      }
+    }
+
+    // Validate auth token (if auth is configured)
+    if (config.authSecret.length > 0) {
+      if (theToken.length === 0) {
+        sendToClient(wsId, '{"error":"Authentication required"}');
+        closeClient(wsId);
+        wsJoined.delete(wsId);
+        return;
+      }
+      const tokenUserId = validateToken(theToken);
+      if (tokenUserId < 1) {
+        sendToClient(wsId, '{"error":"Invalid token"}');
+        closeClient(wsId);
+        wsJoined.delete(wsId);
+        return;
+      }
+      console.log('Auth OK: userId=' + String(tokenUserId) + ' device=' + theDevice);
+    }
+
     // Check room capacity
     const rHash = djb2Hash(theRoom);
     const currentCount = roomMemberCount.get(rHash) || 0;
@@ -314,7 +414,27 @@ function onWsMessage(ws: any, data: any): void {
 
     console.log('Joined wsId=' + String(wsId) + ' host=' + String(isHost));
 
-    // Deliver buffered messages
+    // Deliver persisted deltas from SQLite (since lastSeq)
+    const deltasJson = getDeltasAfter(theRoom, lastSeq);
+    // Parse the JSON array of deltas and send each payload
+    if (deltasJson.length > 2) {
+      // deltasJson is like: [{"seq":1,"deviceId":"...","payload":"...","createdAt":N}, ...]
+      // Send as a batch message
+      let batchMsg = '{"type":"deltas","room":"';
+      batchMsg += theRoom;
+      batchMsg += '","deltas":';
+      batchMsg += deltasJson;
+      batchMsg += '}';
+      sendToClient(wsId, batchMsg);
+    }
+
+    // Update cursor
+    const roomMaxSeq = getRoomMaxSeq(theRoom);
+    if (roomMaxSeq > 0) {
+      updateCursor(theRoom, theDevice, roomMaxSeq);
+    }
+
+    // Also drain in-memory buffer (for messages not yet persisted)
     const buffered = buffer.drain(theRoom, theDevice);
     for (let i = 0; i < buffered.length; i++) {
       sendToClient(wsId, buffered[i].payload);
@@ -379,18 +499,23 @@ function onWsMessage(ws: any, data: any): void {
   if (eFrom.length > 128) { console.log('ROUTE FAIL: from too long'); return; }
   if (eTo.length > 128) { console.log('ROUTE FAIL: to too long'); return; }
 
-  // Verify sender device matches (use inline charCodeAt comparison)
+  // Log sender device (soft check — don't block routing on mismatch since
+  // Perry slot reuse can cause stale device ID mappings)
   const senderDeviceId = slotDeviceIdMap.get(slot) || '';
-  console.log('ROUTE: senderDeviceId=' + senderDeviceId + ' eFrom=' + eFrom);
-  if (eFrom.length !== senderDeviceId.length) { console.log('ROUTE FAIL: from length mismatch ' + String(eFrom.length) + ' vs ' + String(senderDeviceId.length)); return; }
-  let fromMatch = 1;
-  for (let i = 0; i < eFrom.length; i++) {
-    if (eFrom.charCodeAt(i) !== senderDeviceId.charCodeAt(i)) {
-      fromMatch = 0;
-      break;
+  if (senderDeviceId.length > 0 && eFrom.length > 0 && senderDeviceId.length === eFrom.length) {
+    let fromMatch = 1;
+    for (let i = 0; i < eFrom.length; i++) {
+      if (eFrom.charCodeAt(i) !== senderDeviceId.charCodeAt(i)) {
+        fromMatch = 0;
+        break;
+      }
+    }
+    if (fromMatch !== 1) {
+      console.log('ROUTE WARN: from mismatch slot=' + String(slot) + ' expected=' + senderDeviceId + ' got=' + eFrom);
+      // Update slot device ID to the actual sender
+      slotDeviceIdMap.set(slot, eFrom);
     }
   }
-  if (fromMatch !== 1) { console.log('ROUTE FAIL: from mismatch'); return; }
 
   // Verify room matches
   if (eRoom.length !== senderRoomId.length) { console.log('ROUTE FAIL: room length mismatch'); return; }
@@ -448,6 +573,9 @@ function onWsMessage(ws: any, data: any): void {
   } else if (isBroadcast === 1) {
     console.log('Route: broadcast roomHash=' + String(roomHash) + ' sender=' + String(wsId) + ' members=' + String(memberCount));
     broadcastToRoom(roomHash, wsId, msg);
+    // Persist delta to SQLite (0 = no quota enforcement on relay side for now)
+    const senderDevice = slotDeviceIdMap.get(slot) || '';
+    storeDelta(senderRoomId, senderDevice, msg, 0);
   } else {
     // Direct device target — find the target wsId by scanning members
     let targetWs = -1;
@@ -457,6 +585,7 @@ function onWsMessage(ws: any, data: any): void {
       const mHash = memRoomHash.get(i) || 0;
       if (mHash !== roomHash) continue;
       const mWsIdVal = memWsId.get(i) || 0;
+      if (mWsIdVal === wsId) continue;
       const tSlot = wsIdToSlot.get(mWsIdVal);
       if (tSlot !== undefined && (slotActiveMap.get(tSlot) || 0) === 1) {
         const tDev = slotDeviceIdMap.get(tSlot) || '';
@@ -478,6 +607,9 @@ function onWsMessage(ws: any, data: any): void {
     if (targetWs !== -1) {
       sendToClient(targetWs, msg);
     }
+    // Persist direct messages too
+    const senderDevice2 = slotDeviceIdMap.get(slot) || '';
+    storeDelta(senderRoomId, senderDevice2, msg, 0);
   }
 }
 
@@ -547,7 +679,7 @@ app.get('/health', async (request: any, reply: any) => {
   body += String(seen.size);
   body += ',"connections":';
   body += String(count);
-  body += ',"version":"0.1.0"}';
+  body += ',"version":"0.2.0"}';
   reply.header('Content-Type', 'application/json');
   return body;
 });
