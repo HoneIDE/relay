@@ -606,6 +606,9 @@ function onWsMessage(ws: any, data: any): void {
     }
     if (targetWs !== -1) {
       sendToClient(targetWs, msg);
+    } else {
+      // Target device offline — buffer for delivery on reconnect
+      buffer.store(senderRoomId, eTo, msg);
     }
     // Persist direct messages too
     const senderDevice2 = slotDeviceIdMap.get(slot) || '';
