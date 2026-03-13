@@ -412,7 +412,7 @@ function onWsMessage(ws: any, data: any): void {
     conf += '"}';
     sendToClient(wsId, conf);
 
-    console.log('Joined wsId=' + String(wsId) + ' host=' + String(isHost));
+    console.log('Joined wsId=' + String(wsId) + ' host=' + String(isHost) + ' room=' + theRoom + ' device=' + theDevice);
 
     // Deliver persisted deltas from SQLite (since lastSeq)
     const deltasJson = getDeltasAfter(theRoom, lastSeq);
@@ -444,15 +444,22 @@ function onWsMessage(ws: any, data: any): void {
   }
 
   // ===================== ROUTING PATH (inline) =====================
-  console.log('ROUTE: wsId=' + String(wsId) + ' msgLen=' + String(msg.length));
-  if (!wsIdToSlot.has(wsId)) { console.log('ROUTE FAIL: no slot for wsId'); return; }
+  // Skip keepalive pings (Perry indexOf may misparse short JSON messages)
+  // Check for "type" key — ping/pong messages have "type" but no "from"/"to"/"room"
+  if (msg.length < 30) {
+    // Short messages are likely pings; check for "ping" (charCode: p=112 i=105 n=110 g=103)
+    const pingCheck = msg.indexOf('"ping"');
+    if (pingCheck >= 0) return;
+    const pongCheck = msg.indexOf('"pong"');
+    if (pongCheck >= 0) return;
+  }
+  if (!wsIdToSlot.has(wsId)) { return; }
   const slot = wsIdToSlot.get(wsId) as number;
   const slotAct = slotActiveMap.get(slot) || 0;
   if (slotAct !== 1) { console.log('ROUTE FAIL: slot not active'); return; }
 
   const senderRoomId = slotRoomIdMap.get(slot) || '';
   const roomHash = djb2Hash(senderRoomId);
-  console.log('ROUTE: slot=' + String(slot) + ' room=' + senderRoomId + ' hash=' + String(roomHash));
 
   // Extract "from":"..."
   const fromKeyIdx = msg.indexOf('"from"');
@@ -490,14 +497,12 @@ function onWsMessage(ws: any, data: any): void {
   const roomQE2 = msg.indexOf('"', roomQS2 + 1);
   const eRoom = msg.slice(roomQS2 + 1, roomQE2);
 
-  console.log('ROUTE: from=' + eFrom + ' to=' + eTo + ' room=' + eRoom);
-
   // Validate required fields
-  if (eFrom.length === 0) { console.log('ROUTE FAIL: empty from'); return; }
-  if (eTo.length === 0) { console.log('ROUTE FAIL: empty to'); return; }
-  if (eRoom.length === 0) { console.log('ROUTE FAIL: empty room'); return; }
-  if (eFrom.length > 128) { console.log('ROUTE FAIL: from too long'); return; }
-  if (eTo.length > 128) { console.log('ROUTE FAIL: to too long'); return; }
+  if (eFrom.length === 0) { return; }
+  if (eTo.length === 0) { return; }
+  if (eRoom.length === 0) { return; }
+  if (eFrom.length > 128) { return; }
+  if (eTo.length > 128) { return; }
 
   // Log sender device (soft check — don't block routing on mismatch since
   // Perry slot reuse can cause stale device ID mappings)
@@ -511,14 +516,13 @@ function onWsMessage(ws: any, data: any): void {
       }
     }
     if (fromMatch !== 1) {
-      console.log('ROUTE WARN: from mismatch slot=' + String(slot) + ' expected=' + senderDeviceId + ' got=' + eFrom);
       // Update slot device ID to the actual sender
       slotDeviceIdMap.set(slot, eFrom);
     }
   }
 
   // Verify room matches
-  if (eRoom.length !== senderRoomId.length) { console.log('ROUTE FAIL: room length mismatch'); return; }
+  if (eRoom.length !== senderRoomId.length) { return; }
   let roomMatch = 1;
   for (let i = 0; i < eRoom.length; i++) {
     if (eRoom.charCodeAt(i) !== senderRoomId.charCodeAt(i)) {
@@ -571,7 +575,8 @@ function onWsMessage(ws: any, data: any): void {
     console.log('Route: host roomHash=' + String(roomHash));
     sendToRoomHost(roomHash, msg);
   } else if (isBroadcast === 1) {
-    console.log('Route: broadcast roomHash=' + String(roomHash) + ' sender=' + String(wsId) + ' members=' + String(memberCount));
+    const rmCount = roomMemberCount.get(roomHash) || 0;
+    console.log('Route: broadcast roomHash=' + String(roomHash) + ' sender=' + String(wsId) + ' members=' + String(rmCount));
     broadcastToRoom(roomHash, wsId, msg);
     // Persist delta to SQLite (0 = no quota enforcement on relay side for now)
     const senderDevice = slotDeviceIdMap.get(slot) || '';
