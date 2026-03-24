@@ -108,6 +108,22 @@ const stmtPurgeInactiveRoomMeta = db.prepare(
   'DELETE FROM roomMeta WHERE roomId = ?'
 );
 
+const stmtBatchCountInactiveDeltas = db.prepare(
+  'SELECT COALESCE(SUM(sub.cnt), 0) as total FROM (SELECT COUNT(*) as cnt FROM deltas WHERE roomId IN (SELECT roomId FROM roomMeta WHERE createdAt < ? AND roomId NOT IN (SELECT DISTINCT roomId FROM deltas WHERE createdAt >= ?))) as sub'
+);
+
+const stmtBatchPurgeInactiveDeltas = db.prepare(
+  'DELETE FROM deltas WHERE roomId IN (SELECT roomId FROM roomMeta WHERE createdAt < ? AND roomId NOT IN (SELECT DISTINCT roomId FROM deltas WHERE createdAt >= ?))'
+);
+
+const stmtBatchPurgeInactiveCursors = db.prepare(
+  'DELETE FROM cursors WHERE roomId IN (SELECT roomId FROM roomMeta WHERE createdAt < ? AND roomId NOT IN (SELECT DISTINCT roomId FROM deltas WHERE createdAt >= ?))'
+);
+
+const stmtBatchPurgeInactiveRoomMeta = db.prepare(
+  'DELETE FROM roomMeta WHERE createdAt < ? AND roomId NOT IN (SELECT DISTINCT roomId FROM deltas WHERE createdAt >= ?)'
+);
+
 /**
  * Initialize the delta store. Now a no-op since all init happens at module level.
  * Kept for API compatibility with app.ts.
@@ -262,23 +278,19 @@ export function purgeOldDeltas(maxAgeMs: number, inactiveMs: number): number {
   const ageResult = stmtPurgeExpired.run(JSON.stringify([cutoffAge]));
   totalPurged += ageResult.changes;
 
-  // Step 2: Find and destroy rooms inactive for inactiveMs
+  // Step 2: Batch count, delete, and clean up inactive rooms
   const cutoffInactive = now - inactiveMs;
-  const inactiveRooms = stmtGetInactiveRooms.all(JSON.stringify([cutoffInactive, cutoffInactive]));
+  const params = JSON.stringify([cutoffInactive, cutoffInactive]);
 
-  for (let i = 0; i < inactiveRooms.length; i++) {
-    const rid = String((inactiveRooms[i] as any).roomId);
+  // Count deltas in inactive rooms (single query)
+  const countRow = stmtBatchCountInactiveDeltas.get(params);
+  const cnt = countRow !== undefined ? Number((countRow as any).total) : 0;
+  totalPurged += cnt;
 
-    // Count deltas being removed
-    const countRow = stmtGetDeltaCount.get(JSON.stringify([rid]));
-    const cnt = countRow !== undefined ? Number((countRow as any).cnt) : 0;
-    totalPurged += cnt;
-
-    // Remove all data for this room
-    stmtPurgeInactiveDeltas.run(JSON.stringify([rid]));
-    stmtPurgeInactiveCursors.run(JSON.stringify([rid]));
-    stmtPurgeInactiveRoomMeta.run(JSON.stringify([rid]));
-  }
+  // Batch delete all data for inactive rooms (3 queries instead of N*3)
+  stmtBatchPurgeInactiveDeltas.run(params);
+  stmtBatchPurgeInactiveCursors.run(params);
+  stmtBatchPurgeInactiveRoomMeta.run(params);
 
   // Recalculate roomMeta totalBytes for remaining rooms
   const stmtAllRooms2 = db.prepare('SELECT roomId FROM roomMeta');
