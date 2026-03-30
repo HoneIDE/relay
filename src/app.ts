@@ -17,6 +17,7 @@
 import Fastify from 'fastify';
 import { WebSocketServer, sendToClient, closeClient } from 'ws';
 import { readFileSync } from 'fs';
+import { t } from 'perry/i18n';
 import { buildConfig, parseConfigFile } from './config';
 import { RoomManager } from './rooms';
 import { MessageBuffer } from './buffer';
@@ -282,7 +283,7 @@ function onWsMessage(ws: any, data: any): void {
     // Check for "join" in message
     const joinIdx = msg.indexOf('"join"');
     if (joinIdx < 0) {
-      sendToClient(wsId, '{"error":"First message must be join"}');
+      sendToClient(wsId, '{"error":"' + t('First message must be join') + '"}');
       closeClient(wsId);
       wsJoined.delete(wsId);
       return;
@@ -291,7 +292,7 @@ function onWsMessage(ws: any, data: any): void {
     // Extract room: find "room":"..."
     const roomKeyIdx = msg.indexOf('"room"');
     if (roomKeyIdx < 0) {
-      sendToClient(wsId, '{"error":"Missing room"}');
+      sendToClient(wsId, '{"error":"' + t('Missing room') + '"}');
       closeClient(wsId);
       wsJoined.delete(wsId);
       return;
@@ -304,7 +305,7 @@ function onWsMessage(ws: any, data: any): void {
     // Extract device: find "device":"..."
     const devKeyIdx = msg.indexOf('"device"');
     if (devKeyIdx < 0) {
-      sendToClient(wsId, '{"error":"Missing device"}');
+      sendToClient(wsId, '{"error":"' + t('Missing device') + '"}');
       closeClient(wsId);
       wsJoined.delete(wsId);
       return;
@@ -315,7 +316,7 @@ function onWsMessage(ws: any, data: any): void {
     const theDevice = msg.slice(devQS + 1, devQE);
 
     if (theRoom.length === 0 || theDevice.length === 0) {
-      sendToClient(wsId, '{"error":"Empty room or device"}');
+      sendToClient(wsId, '{"error":"' + t('Empty room or device') + '"}');
       closeClient(wsId);
       wsJoined.delete(wsId);
       return;
@@ -356,14 +357,14 @@ function onWsMessage(ws: any, data: any): void {
     // Validate auth token (if auth is configured)
     if (config.authSecret.length > 0) {
       if (theToken.length === 0) {
-        sendToClient(wsId, '{"error":"Authentication required"}');
+        sendToClient(wsId, '{"error":"' + t('Authentication required') + '"}');
         closeClient(wsId);
         wsJoined.delete(wsId);
         return;
       }
       const tokenUserId = validateToken(theToken);
       if (tokenUserId < 1) {
-        sendToClient(wsId, '{"error":"Invalid token"}');
+        sendToClient(wsId, '{"error":"' + t('Invalid token') + '"}');
         closeClient(wsId);
         wsJoined.delete(wsId);
         return;
@@ -375,7 +376,7 @@ function onWsMessage(ws: any, data: any): void {
     const rHash = djb2Hash(theRoom);
     const currentCount = roomMemberCount.get(rHash) || 0;
     if (currentCount >= config.maxClientsPerRoom) {
-      sendToClient(wsId, '{"error":"Room full"}');
+      sendToClient(wsId, '{"error":"' + t('Room full') + '"}');
       closeClient(wsId);
       wsJoined.delete(wsId);
       return;

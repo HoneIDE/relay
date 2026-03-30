@@ -1,0 +1,9 @@
+{
+  "Authentication required": "Autenticazione richiesta",
+  "Empty room or device": "Stanza o dispositivo vuoto",
+  "First message must be join": "Il primo messaggio deve essere join",
+  "Invalid token": "Token non valido",
+  "Missing device": "Dispositivo mancante",
+  "Missing room": "Stanza mancante",
+  "Room full": "Stanza piena"
+}

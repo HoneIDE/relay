@@ -1,0 +1,9 @@
+{
+  "Authentication required": "Autentikasi diperlukan",
+  "Empty room or device": "Room atau perangkat kosong",
+  "First message must be join": "Pesan pertama harus join",
+  "Invalid token": "Token tidak valid",
+  "Missing device": "Perangkat tidak ditemukan",
+  "Missing room": "Room tidak ditemukan",
+  "Room full": "Room penuh"
+}

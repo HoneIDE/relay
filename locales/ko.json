@@ -1,0 +1,9 @@
+{
+  "Authentication required": "인증이 필요합니다",
+  "Empty room or device": "룸 또는 기기가 비어 있습니다",
+  "First message must be join": "첫 번째 메시지는 join이어야 합니다",
+  "Invalid token": "잘못된 토큰",
+  "Missing device": "기기가 없습니다",
+  "Missing room": "룸이 없습니다",
+  "Room full": "룸이 가득 찼습니다"
+}

@@ -1,0 +1,9 @@
+{
+  "Authentication required": "認証が必要です",
+  "Empty room or device": "ルームまたはデバイスが空です",
+  "First message must be join": "最初のメッセージはjoinである必要があります",
+  "Invalid token": "無効なトークン",
+  "Missing device": "デバイスがありません",
+  "Missing room": "ルームがありません",
+  "Room full": "ルームが満員です"
+}

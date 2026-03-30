@@ -1,0 +1,9 @@
+{
+  "Authentication required": "ต้องมีการยืนยันตัวตน",
+  "Empty room or device": "ห้องหรืออุปกรณ์ว่างเปล่า",
+  "First message must be join": "ข้อความแรกต้องเป็น join",
+  "Invalid token": "โทเค็นไม่ถูกต้อง",
+  "Missing device": "ไม่พบอุปกรณ์",
+  "Missing room": "ไม่พบห้อง",
+  "Room full": "ห้องเต็ม"
+}

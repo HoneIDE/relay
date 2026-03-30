@@ -1,0 +1,9 @@
+{
+  "Authentication required": "需要身份验证",
+  "Empty room or device": "房间或设备为空",
+  "First message must be join": "第一条消息必须是join",
+  "Invalid token": "无效的token",
+  "Missing device": "缺少设备",
+  "Missing room": "缺少房间",
+  "Room full": "房间已满"
+}

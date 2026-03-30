@@ -1,0 +1,9 @@
+{
+  "Authentication required": "Yeu cau xac thuc",
+  "Empty room or device": "Phong hoac thiet bi trong",
+  "First message must be join": "Tin nhan dau tien phai la join",
+  "Invalid token": "Token khong hop le",
+  "Missing device": "Thieu thiet bi",
+  "Missing room": "Thieu phong",
+  "Room full": "Phong da day"
+}

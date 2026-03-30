@@ -1,0 +1,9 @@
+{
+  "Authentication required": "Kimlik dogrulama gerekli",
+  "Empty room or device": "Bos oda veya cihaz",
+  "First message must be join": "Ilk mesaj join olmalidir",
+  "Invalid token": "Gecersiz token",
+  "Missing device": "Cihaz eksik",
+  "Missing room": "Oda eksik",
+  "Room full": "Oda dolu"
+}

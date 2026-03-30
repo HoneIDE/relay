@@ -1,0 +1,9 @@
+{
+  "Authentication required": "Autenticacao obrigatoria",
+  "Empty room or device": "Sala ou dispositivo vazio",
+  "First message must be join": "A primeira mensagem deve ser join",
+  "Invalid token": "Token invalido",
+  "Missing device": "Dispositivo ausente",
+  "Missing room": "Sala ausente",
+  "Room full": "Sala cheia"
+}

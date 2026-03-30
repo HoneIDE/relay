@@ -1,0 +1,13 @@
+[project]
+build_number = 1
+entry = "src/app.ts"
+name = "Hone Relay"
+version = "0.1.0"
+
+[build]
+opt_level = 2
+out_dir = "dist"
+
+[i18n]
+default_locale = "en"
+locales = ["en", "de", "ja", "zh-Hans", "es-MX", "fr", "pt", "ko", "it", "tr", "th", "id", "vi"]
